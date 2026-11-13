@@ -1,3 +1,4 @@
+import {placeFlipButton} from './floating-flip.js';
 import {appendMismatchLayer} from './mismatch.js';
 import {HAND_PARTS,handAppearance,tileTransform} from './hand.js';
 import {recordAccessOnce} from './access-counter.js';
@@ -39,18 +40,48 @@ return outer;}
 function svg(box){return el('svg',{xmlns:NS,viewBox:box,'aria-label':'白い正三角形と色付きの半分のマーク'});}
 function render(){
 const physical=assembly(state),count=sourcePieces(state).length;
+renderPieceFaceButtons();
 $('#assembly-status').textContent=physical.message;
 $('#assembly-status').className=physical.valid?'hint':'assembly-error';
 $('#save-tile').disabled=$('#save-board').disabled=$('#flip').disabled=$('#one-reset').disabled=!physical.valid;
 if(!physical.valid){
  $('#preview').replaceChildren();$('#board').replaceChildren();
+ updateFloatingFlip();
  $('#status').textContent='実物の紙で組み立てられる表裏の組み合わせを選んでください。';
  $('#selection').textContent='組立不可の設定ではタイル操作・PNG保存を停止します。';
  return;
 }
 const moved=physical.pieces.filter(p=>p.sourceId!==p.id);
-$('#assembly-status').textContent=moved.length?'実物で組立可能。移動：'+moved.map(p=>`${pieceName(sourcePieces(state).find(q=>q.id===p.sourceId))} → ${pieceName(p)}`).join(' ／ '):'実物で組立可能。各ピースは元の位置にあります。';$('.badge').textContent=`正三角形 · ${count}ピース`;$('#piece-description').textContent=`点線に沿って切り分ける${count}枚のパーツ`;const p=svg('-130 -140 260 230');drawTile(p,{rotation:0,flip:false});$('#preview').replaceChildren(p);const b=svg('-125 -170 1050 670');tiles.forEach((t,i)=>drawTile(b,t,{interactive:true,index:i}));const results=checkTiling(state,tiles);const t=selected===null?null:tiles[selected];if(t)b.append(el('path',{d:path(vertices.map(p=>transform(p.map(v=>v*.92),t))),fill:'none',stroke:'#233f49','stroke-width':3,'stroke-dasharray':'12 7','pointer-events':'none','data-selection':'true'}));appendMismatchLayer(b,results,showMismatches,el);$('#show-mismatches').checked=showMismatches;$('#board').replaceChildren(b);const good=results.filter(r=>r.match).length;$('#status').textContent=`隣接する${results.length}辺中 ${good}辺が一致 ／ ${results.length-good}辺が不一致`;$('#flip').disabled=!t;$('#one-reset').disabled=!t;$('#selection').textContent=t?`選択：${Math.floor(selected/8)+1}行 ${selected%8+1}列 · ${t.rotation*120}° · ${t.flip?'裏返し':'通常'}`:'タイルを選択してください。選択中のタイルを再度押すと120°回転します。';}
+$('#assembly-status').textContent=moved.length?'実物で組立可能。移動：'+moved.map(p=>`${pieceName(sourcePieces(state).find(q=>q.id===p.sourceId))} → ${pieceName(p)}`).join(' ／ '):'実物で組立可能。各ピースは元の位置にあります。';$('.badge').textContent=`正三角形 · ${count}ピース`;$('#piece-description').textContent=`点線に沿って切り分ける${count}枚のパーツ`;const p=svg('-130 -140 260 230');drawTile(p,{rotation:0,flip:false});$('#preview').replaceChildren(p);const b=svg('-125 -170 1050 670');tiles.forEach((t,i)=>drawTile(b,t,{interactive:true,index:i}));const results=checkTiling(state,tiles);const t=selected===null?null:tiles[selected];if(t)b.append(el('path',{d:path(vertices.map(p=>transform(p.map(v=>v*.92),t))),fill:'none',stroke:'#233f49','stroke-width':3,'stroke-dasharray':'12 7','pointer-events':'none','data-selection':'true'}));appendMismatchLayer(b,results,showMismatches,el);$('#show-mismatches').checked=showMismatches;$('#board').replaceChildren(b);const good=results.filter(r=>r.match).length;$('#status').textContent=`隣接する${results.length}辺中 ${good}辺が一致 ／ ${results.length-good}辺が不一致`;$('#flip').disabled=!t;$('#one-reset').disabled=!t;$('#selection').textContent=t?`選択：${Math.floor(selected/8)+1}行 ${selected%8+1}列 · ${t.rotation*120}° · ${t.flip?'裏返し':'通常'}`:'タイルを選択してください。選択中のタイルを再度押すと120°回転します。';updateFloatingFlip();}
 function pieceName(piece){return names[piece.edge]+(piece.end-piece.start<1?`・区間${piece.segment+1}`:'');}
+function setPieceBack(index,back){
+ state.backs[index]=back;
+ const checkbox=$(`#piece-back-${index}`);
+ if(checkbox)checkbox.checked=back;
+ render();
+}
+function renderPieceFaceButtons(){
+ const host=$('#piece-face-buttons'),active=sourcePieces(state);
+ const structure=active.map(p=>p.id).join('|');
+ if(host.dataset.structure!==structure){
+  host.replaceChildren();
+  active.forEach(piece=>{
+   const button=document.createElement('button');button.type='button';button.dataset.pieceFace=piece.index;
+   button.append(document.createElement('span'),document.createElement('strong'));
+   button.onclick=()=>setPieceBack(piece.index,!state.backs[piece.index]);
+   host.append(button);
+  });
+  host.dataset.structure=structure;
+ }
+ active.forEach(piece=>{
+  const button=host.children[piece.index],back=Boolean(state.backs[piece.index]);
+  const name=`${pieceName(piece)}（${piece.pair<0?'マークなし':pairLabel(piece.pair)}）`;
+  button.firstElementChild.textContent=name;
+  button.lastElementChild.textContent=back?'裏':'表';
+  button.setAttribute('aria-pressed',String(back));
+  button.setAttribute('aria-label',`${name}：${back?'裏':'表'}。押すと${back?'表':'裏'}にする`);
+ });
+}
 function controls(){
  const active=sourcePieces(state),host=$('#pairs');host.replaceChildren();
  state.pairs.forEach((pair,i)=>{
@@ -67,7 +98,7 @@ function controls(){
  $('#backs').replaceChildren();
  active.forEach(piece=>{
   const label=document.createElement('label');label.className='check';const input=document.createElement('input');input.type='checkbox';input.checked=state.backs[piece.index];input.id=`piece-back-${piece.index}`;
-  input.onchange=()=>{state.backs[piece.index]=input.checked;render();};label.append(input,`${pieceName(piece)}（${piece.pair<0?'マークなし':pairLabel(piece.pair)}）を裏返す`);$('#backs').append(label);
+  input.onchange=()=>setPieceBack(piece.index,input.checked);label.append(input,`${pieceName(piece)}（${piece.pair<0?'マークなし':pairLabel(piece.pair)}）を裏返す`);$('#backs').append(label);
  });
  $('#back-color').checked=state.backColor;$('#show-hand').checked=state.showHand;
 }
@@ -77,7 +108,42 @@ $('#show-hand').onchange=e=>{state.showHand=e.target.checked;render();};
 $('#half').onchange=e=>reconfigure({half:e.target.checked});
 $('#blank-split').onchange=e=>reconfigure({blankSplit:e.target.checked});
 $('#blank').onchange=e=>reconfigure({blank:Number(e.target.value)});
-$('#back-color').onchange=e=>{state.backColor=e.target.checked;render();};$('#settings-reset').onclick=()=>{state=defaults();controls();render();};$('#flip').onclick=()=>{if(selected===null||!assembly(state).valid)return;tiles[selected].flip=!tiles[selected].flip;render();};$('#one-reset').onclick=()=>{if(selected===null||!assembly(state).valid)return;Object.assign(tiles[selected],{rotation:0,flip:false});render();};$('#all-reset').onclick=()=>{tiles=initialTiles();selected=null;render();};
+$('#back-color').onchange=e=>{state.backColor=e.target.checked;render();};$('#settings-reset').onclick=()=>{state=defaults();controls();render();};$('#flip').onclick=flipSelectedTile;$('#one-reset').onclick=()=>{if(selected===null||!assembly(state).valid)return;Object.assign(tiles[selected],{rotation:0,flip:false});render();};$('#all-reset').onclick=()=>{tiles=initialTiles();selected=null;render();};
+function flipSelectedTile(){
+ if(selected===null||!assembly(state).valid)return;
+ tiles[selected].flip=!tiles[selected].flip;
+ render();
+}
+$('#floating-flip').addEventListener('click',event=>{
+ event.stopPropagation();
+ flipSelectedTile();
+});
+function updateFloatingFlip(){
+ const button=$('#floating-flip');
+ const tile=selected===null?null:$(`#board [data-tile="${selected}"]`);
+ if(!tile){button.hidden=true;return;}
+ const rect=tile.getBoundingClientRect(),shell=$('#board-shell').getBoundingClientRect();
+ const viewport=window.visualViewport;
+ const screen={left:viewport?.offsetLeft||0,top:viewport?.offsetTop||0,right:(viewport?.offsetLeft||0)+(viewport?.width||innerWidth),bottom:(viewport?.offsetTop||0)+(viewport?.height||innerHeight)};
+ if(rect.bottom<=screen.top||rect.top>=screen.bottom||rect.right<=screen.left||rect.left>=screen.right){button.hidden=true;return;}
+ button.hidden=false;
+ const bounds={left:Math.max(shell.left,screen.left+8),right:Math.min(shell.right,screen.right-8),top:Math.max(shell.top,screen.top+8),bottom:Math.min(shell.bottom,screen.bottom-8)};
+ if(bounds.right-bounds.left<button.offsetWidth||bounds.bottom-bounds.top<button.offsetHeight){button.hidden=true;return;}
+ const pos=placeFlipButton(rect,bounds,{width:button.offsetWidth,height:button.offsetHeight});
+ button.style.left=`${pos.left-shell.left}px`;
+ button.style.top=`${pos.top-shell.top}px`;
+ button.dataset.side=pos.side;
+}
+let floatingFrame=null;
+function scheduleFloatingFlip(){
+ if(floatingFrame!==null)return;
+ floatingFrame=requestAnimationFrame(()=>{floatingFrame=null;updateFloatingFlip();});
+}
+window.addEventListener('resize',scheduleFloatingFlip);
+window.addEventListener('scroll',scheduleFloatingFlip,{capture:true,passive:true});
+window.visualViewport?.addEventListener('resize',scheduleFloatingFlip);
+window.visualViewport?.addEventListener('scroll',scheduleFloatingFlip);
+if(typeof ResizeObserver!=='undefined')new ResizeObserver(scheduleFloatingFlip).observe($('#board-shell'));
 // Keep action/settings controls usable without clearing the selected tile.
 document.addEventListener('click',event=>{
   if(event.target.closest('#board [data-tile],#preview,button,input,select,label,aside'))return;
